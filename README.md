@@ -1,131 +1,114 @@
-# fss_px4_sim
+# FastSwarmSim
 
-This package provides a ROS 2 PX4 simulator runtime. 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/shupx/FastSwarmSim)
 
-```bash
-# Launch a single drone simulation with PX4 SITL and MAVROS Lite bridge.
-ros2 launch fss_px4_sim px4_rotor_sim_single.launch.py
+Documentation: https://shupx.github.io/FastSwarmSim/
 
-# Launch a multi-drone simulation.
-ros2 launch fss_px4_sim px4_rotor_sim_multi.launch.py num_drones:=5
+FastSwarmSim (fss) is a lightweight ROS 2 simulator for PX4-compatible multi-rotor vehicles. It combines a streamlined PX4 runtime, MAVROS-compatible ROS interfaces, local LiDAR point-cloud rendering, RViz visualization, and a conservative lock-step simulation clock. The simulator is intended for multi-UAV algorithm development, repeatable simulation-time experiments, and large-scale swarm prototyping.
 
-# Launch perfect MAVROS-compatible drones (No PX4 controller and dynamics, perfect tracking MAVROS commands).
-ros2 launch fss_px4_sim perfect_mavros_drone_single.launch.py
-ros2 launch fss_px4_sim perfect_mavros_drone_multi.launch.py num_drones:=5
+![Multi-drone PX4 simulation in RViz](misc/px4_rotor_sim_multi.png)
 
-# Only launch the drone visualizer node, useful for real experiments.
-ros2 launch fss_px4_sim drone_visualizer.launch.py
-ros2 launch fss_px4_sim drone_visualizer.launch.py num_drones:=5
+**Performance:**
+On a desktop-class computer with LiDAR simulation disabled, FastSwarmSim can run a single vehicle at up to 100x real time, five vehicles at 50x, ten vehicles at 30x, and one hundred vehicles at 4x. This performance comes from the trimmed PX4 core, lightweight MAVROS modules, and efficient lock-step simulation-time system.
 
-# Terminal keyboard control (start PX4/MAVROS Lite first)
-ros2 run fss_px4_sim keyboard_control_ros2
+## Packages
 
-```
-
-## What it contains:
-
-1. A tailored PX4 v1.13.3 flight controll stack. The position controller, attitude controller, state machine, and MAVLink interface are included.  Although it is based on the PX4 v1.13.3 source code, the core logic remains the same across different PX4 versions, and it is expected to be compatible with most recent PX4 versions (v1.15+).
-
-2. A MAVROS Lite bridge to expose the PX4 MAVLink interface as ROS 2 topics and services. This bridge is embedded in the PX4 simulator process by default so that no extra mavros process is needed. The bridge can also be run as a separate process, and the PX4 simulator and the MAVROS Lite bridge communicate through a loopback UDP port.
-
-3. AN ideal dynamic model for the quadrotor, which accepts the desired angular rates and thrust from the PX4 simulator and outputs the drone's position, velocity, attitude, and angular rates. The dynamics is integrated using odeint. The integration step size is 0.01s (100Hz).
-
-4. (Optional) A drone visualizer node process receives MAVROS topics and publishes the drone's URDF, history trajectory, and name markers for visualization in RViz2. 
-
-In conclusion, the conventional PX4 SITL process + MAVROS process + drone dynamics process is simplified to a single PX4 simulator process, which is more efficient. A step of simulation (10ms) only costs about 0.1ms in real time, so the simulation can run at most 100x real time speed on a normal laptop.
-
-## Terminal keyboard control
-
-`keyboard_control_ros2` is a standard-terminal `rclpy` node; it does not use ROS 1 or PyQt5. Run it in a separate terminal after starting a simulator with MAVROS Lite:
-
-```bash
-ros2 run fss_px4_sim keyboard_control_ros2
-
-# Optional: control the first vehicle in a multi-drone launch.
-ros2 run fss_px4_sim keyboard_control_ros2 --ros-args -r __ns:=/uav1
-```
-
-| Key | Action |
+| Package | Purpose |
 | --- | --- |
-| `W/A/S/D` | move while held; automatically stop after release |
-| `Q/E` | change altitude while held; automatically stop after release |
-| `Z/C` | yaw while held; automatically stop after release |
-| `Space` or `R` | zero all velocities (hold position) |
-| `+` / `-` | adjust translation speed by 0.1 m/s |
-| `T` | arm via `/mavros/cmd/arming` |
-| `O` | request `OFFBOARD` via `/mavros/set_mode` after arming |
-| `X` | stop and disarm |
-| `Ctrl-C` | stop, request disarm, and restore terminal |
+| `fss_bringup` | Integrated launch files for complete single- and multi-drone PX4/LiDAR/RViz simulations. |
+| `fss_px4_sim` | PX4-based quadrotor simulation runtime, MAVROS Lite bridge, ideal quadrotor dynamics, MAVROS-compatible perfect-drone baseline, and RViz vehicle visualization. |
+| `fss_sensing` | Local LiDAR point-cloud simulator. It renders the visible cloud from a vehicle pose against a static PCD map through the bundled `marsim_render` library. |
+| `fss_time` | ZeroMQ-based conservative lock-step time coordinator, `/clock` publisher, simulation-speed controls, and C++ helpers/executors for time-synchronized ROS 2 nodes. **NOT only for FastSwarmSim, but for all types of ROS nodes**  |
+| `fss_time_interfaces` | ROS 2 message and service definitions used by `fss_time`, including simulation clock control interfaces. |
 
-The node starts streaming neutral setpoints at 20 Hz, then requires the explicit safe sequence `T`, wait for `armed=True`, then `O`; it refuses an OFFBOARD request while state reports disarmed. Motion keys are treated as held keys: the terminal's keyboard-repeat events keep the motion alive, and the controller sends a zero-velocity setpoint after 0.6 seconds without a repeat event. This is the safe terminal equivalent of stop-on-release because standard terminal input does not expose raw key-release events. The controller uses relative MAVROS names: `mavros/setpoint_raw/local`, `mavros/state`, `mavros/cmd/arming`, and `mavros/set_mode`. Therefore, the single-vehicle command resolves them to `/mavros/...` without any extra namespace argument. With `--ros-args -r __ns:=/uav1`, the same names resolve to `/uav1/mavros/...`, matching the multi-vehicle ROS 1-style namespace layout. On every normal exit it publishes a neutral setpoint and waits up to one second for a disarm request before restoring the terminal. Set `--speed`, `--yaw-speed`, or `--initial-altitude` to change control defaults. Always verify the vehicle is in a safe simulation state before arming.
+## Supported Platforms
 
-The keyboard controller is intended for an interactive terminal. The following
-terminal reference shows the single-vehicle command, the resolved relative
-MAVROS interfaces, and the ROS 2 namespace command for `/uav1`. Always verify
-the simulated vehicle state before arming:
+| Operating system | ROS 2 distribution |
+| --- | --- |
+| Ubuntu 22.04 | ROS 2 Humble |
+| Ubuntu 24.04 | ROS 2 Jazzy |
 
-![Keyboard control terminal](https://shupx.github.io/FastSwarmSim/misc/fss_keyboard_control_terminal.png)
+The standard PX4 simulation uses a trimmed PX4 v1.13.3 control stack with MAVROS Lite. For algorithm tests that do not require PX4 control or vehicle dynamics, the perfect-drone launch provides immediate MAVROS-compatible command tracking.
 
-## What it does not simulate:
+## Installation
 
-1. The attitude rate controller of the PX4 is not included on purpose, because simulating the attitude rate controller is not necessary for most applications, and it will slow down the simulation speed. 
-The output of the PX4 simulator is thus the desired angular rates and thrust, assuming that the attitude rate is ideally responded by the drone dynamic model. 
+The project is developed for Ubuntu 22.04 with ROS 2 Humble. Ubuntu 24.04 with ROS 2 Jazzy follows the same process, although package names can differ by ROS distribution.
 
-2. The full PX4 modes such as MISSION, POSCTL, STABLIZE, etc. are not included. The PX4 simulator only supports the OFFBOARD mode, which is sufficient for most applications. 
+Install ROS 2, `colcon`, and `rosdep` by following the [ROS 2 installation guide](https://gitee.com/shu-peixuan/install_ros2). The guide also includes solutions for common network issues.
 
-3. The PX4 simulator does not simulate the sensors such as IMU, barometer, GPS, etc. Therefore, the EKF module is also not included. The pose of the drone is directly provided by the drone dynamics model. And we provide two local pose source modes: (1) mocap/vision mode (default), where the pose in /mavros/local_position/pose is relative to the global map, i.e., the world frame; (2) gps mode, where the pose in /mavros/local_position/pose is relative to the initial position of the drone.
-
-4. The uXRCE DDS and zenoh transports are not included so far. The only transport support is the MAVLINK over mavros_lite or UDP. Since mavlink is a common protocol not only for PX4 and ROS2, but also for Ardupilot and ROS1, while DDS and zenoh are only compatible with PX4 and ROS2 now. Adding the support for DDS and zenoh is possible in the future, but it is not a priority now.
-
-## Accelerate multi-drone simulation using fss_time time coordinator
-
-The simulation loop uses the `fss_time::Rate` instead of `rclcpp::Rate`, so it is compatible with the `fss_time` time coordinator, which controls the simulation clock for multiple drones using a synchronous approach (lock step). The simulation can thus run at a maximum speed of 100x real time for one drone, 20x real time for 10 drones, and 5x real time for 100 drones on a normal laptop. 
-
-- To enable fss sim time, set the `use_fss_sim_time` launch argument to `true` when launching the simulation. The `use_sim_time` parameter should also be set to `true` automatically by the launch file.
-
-- If `use_fss_sim_time` is set to `false`, the simulation will use the default ROS2 time, i.e., the /clock time if `use_sim_time = true` and wall time if `use_sim_time = false`. The /clock topic can be published by other processes, but the lock step simulation will not be supported. 
-
-Since fss_time time coordinator supports cascade clock synchronization across multiple machines, **the simulation can also run on multiple machines**, with each machine simulating a subset of drones. The simulation clock is synchronized across all machines, and the maximum speed of the simulation is limited by the slowest machine.
-
-## Trouble shooting
-
-### 100+ drone simulation
-
-Simulating 100+ drones is possible, but it requires slight modification as the default ROS2 FastRTPS transport has a limit of 100 participants. Solutions:
-
-#### Solution 1: tune FastRTPS participant limits
-
-Set the `mutation_tries` parameter of the FastRTPS transport to a value larger than the number of nodes, e.g., 10000. Create `large_scale_configuration.xml` according to the [ROS 2 tutorial](https://docs.ros.org/en/humble/Tutorials/Advanced/Discovery-Server/Discovery-Server.html#large-number-of-participants):
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<dds xmlns="http://www.eprosima.com">
-  <profiles>
-    <participant profile_name="participant_profile" is_default_profile="true">
-      <rtps>
-        <builtin>
-          <mutation_tries>10000</mutation_tries>
-        </builtin>
-      </rtps>
-    </participant>
-  </profiles>
-</dds>
-```
-
-Then enable the profile before starting any ROS 2 nodes:
+Initialize `rosdep` once on a new machine, then clone and build the workspace. `rosdep install` resolves the required system and ROS dependencies:
 
 ```bash
-export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-export FASTRTPS_DEFAULT_PROFILES_FILE=/path/to/large_scale_configuration.xml  # old ROS 2 Humble
-export FASTDDS_DEFAULT_PROFILES_FILE=/path/to/large_scale_configuration.xml
-ros2 daemon stop  # latest ROS 2 version
+sudo rosdep init
+rosdep update
+
+git clone https://github.com/shupx/FastSwarmSim.git
+
+# for chinese users
+git clone https://gitee.com/shu-peixuan/FastSwarmSim.git  
+
+cd FastSwarmSim
+
+source /opt/ros/$ROS_DISTRO/setup.bash
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+source install/setup.bash
 ```
 
-#### Solution 2: use CycloneDDS
+Source `install/setup.bash` in every new terminal before running the commands below. 
 
-Use the `rmw_cyclonedds_cpp` transport instead of the default `rmw_fastrtps_cpp`. CycloneDDS has no participant limit and launches faster:
+## Common Launch Commands
+
+### [Time coordinator](src/fss_time/README.md)
 
 ```bash
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-ros2 daemon stop
+ros2 launch fss_time time_coordinator.launch.py
 ```
+
+Set a maximum simulation speed when needed:
+
+```bash
+ros2 launch fss_time time_coordinator.launch.py max_real_time_factor:=2.0
+```
+
+### [PX4 and perfect-drone simulation](src/fss_px4_sim/README.md)
+
+```bash
+ros2 launch fss_px4_sim px4_rotor_sim_single.launch.py
+ros2 launch fss_px4_sim px4_rotor_sim_multi.launch.py num_drones:=5
+ros2 launch fss_px4_sim perfect_mavros_drone_swarm.launch.py num_drones:=5
+```
+
+### [Local LiDAR point cloud](src/fss_sensing/README.md)
+
+```bash
+ros2 launch fss_sensing fss_local_pointcloud_sim.launch.py
+```
+
+### [Integrated PX4, LiDAR, and RViz scenes](src/fss_bringup/README.md)
+
+```bash
+ros2 launch fss_bringup sim_px4_drone_lidar_single.launch.py
+ros2 launch fss_bringup sim_px4_drone_lidar_multi.launch.py num_drones:=3
+```
+
+![Single-drone PX4 and LiDAR simulation in RViz](misc/sim_px4_drone_lidar_single.png)
+
+## Further Documentation
+
+- [Time coordination and multi-machine setup](src/fss_time/README.md)
+- [Local point-cloud configuration and DDS tuning](src/fss_sensing/README.md)
+- [PX4 simulator capabilities and scaling notes](src/fss_px4_sim/README.md)
+- [Integrated PX4/LiDAR launch details](src/fss_bringup/README.md)
+- [Time-coordinator test cases](src/fss_time/test_cases/README.md)
+
+Run the test suite with:
+
+```bash
+colcon test
+colcon test-result --verbose
+```
+
+## Contributors
+
+- Peixuan Shu (Beihang University, China, shupeixuan@qq.com)
