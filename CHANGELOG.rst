@@ -2,6 +2,11 @@
 Changelog for package fss_sensing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+0.1.4 (2026-09-30)
+------------------
+* fix: add conditional linking for stdc++fs for GNU compilers below version 9
+* Contributors: Peixuan Shu
+
 0.1.3 (2026-09-30)
 ------------------
 
